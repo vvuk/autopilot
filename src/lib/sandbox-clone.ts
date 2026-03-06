@@ -11,9 +11,8 @@ function clonePath(projectPath: string, name: string): string {
   return resolve(projectPath, ".claude", "clones", name);
 }
 
-/** Run a git command synchronously. Returns stderr text on failure, undefined on success. */
-function gitSync(cwd: string, args: string[]): string | undefined {
-  const result = Bun.spawnSync(["git", ...args], {
+function execSync(cwd: string, cmd: string, args: string[]): string | undefined {
+  const result = Bun.spawnSync([cmd, ...args], {
     cwd,
     stderr: "pipe",
   });
@@ -21,6 +20,11 @@ function gitSync(cwd: string, args: string[]): string | undefined {
     return result.stderr.toString().trim();
   }
   return undefined;
+}
+
+/** Run a git command synchronously. Returns stderr text on failure, undefined on success. */
+function gitSync(cwd: string, args: string[]): string | undefined {
+  return execSync(cwd, "git", args);
 }
 
 /** Run a git command synchronously and return stdout on success, or throw on failure. */
@@ -207,20 +211,6 @@ export async function createClone(
     );
   }
 
-  // Reset the default branch to match GitHub. The --shared clone copied objects
-  // from the local repo, which may be behind origin. New branches must start
-  // from the latest GitHub commit, not a stale local one.
-  const resetErr = gitSync(dest, [
-    "reset",
-    "--hard",
-    `origin/${defaultBranch}`,
-  ]);
-  if (resetErr) {
-    throw new Error(
-      `Failed to reset '${defaultBranch}' to origin in clone '${name}': ${resetErr}`,
-    );
-  }
-
   if (fromBranch) {
     // Fixer/review mode: check out an existing PR branch.
     // The full fetch above already retrieved all remote tracking refs.
@@ -257,13 +247,28 @@ export async function createClone(
 
   // New naming: autopilot-<name>
   const branch = `autopilot-${name}`;
-  const branchErr = gitSync(dest, ["checkout", "-b", branch]);
+  const branchErr = gitSync(dest, ["checkout", "-b", branch, `origin/${defaultBranch}`]);
   if (branchErr) {
     throw new Error(
       `Failed to create branch '${branch}' in clone '${name}': ${branchErr}`,
     );
   }
   info(`Created clone: ${name} (branch ${branch})`);
+  info(`Running setup in ${dest}...`);
+
+  let setupErr = execSync(dest, "mise", ["trust"]);
+  if (!setupErr)
+      setupErr = execSync(dest, "lefthook", ["install"]);
+  if (!setupErr)
+      setupErr = execSync(dest, "uv", ["sync"]);
+  if (!setupErr)
+      setupErr = execSync(dest + "/web", "npm", ["i"]);
+  if (setupErr) {
+    throw new Error(
+      `Failed to setup in clone '${name}': ${setupErr}`,
+    );
+  }
+
   return { path: dest, branch };
 }
 

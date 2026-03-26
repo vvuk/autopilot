@@ -19,6 +19,7 @@ let combinedStatusData: Record<string, unknown> = {
 let checkRunsData: Record<string, unknown> = { check_runs: [] };
 let reviewsData: Record<string, unknown>[] = [];
 let reviewCommentsData: Record<string, unknown>[] = [];
+let issueCommentsData: Record<string, unknown>[] = [];
 let reposData: Record<string, unknown> = {
   allow_merge_commit: true,
   allow_squash_merge: true,
@@ -37,6 +38,9 @@ const mockListReviews = mock(() => Promise.resolve({ data: reviewsData }));
 const mockListReviewComments = mock(() =>
   Promise.resolve({ data: reviewCommentsData }),
 );
+const mockListIssueComments = mock(() =>
+  Promise.resolve({ data: issueCommentsData }),
+);
 const mockReposGet = mock(() => Promise.resolve({ data: reposData }));
 const mockGraphql = mock(() =>
   graphqlShouldReject
@@ -52,6 +56,9 @@ mock.module("octokit", () => ({
         get: mockPullsGet,
         listReviews: mockListReviews,
         listReviewComments: mockListReviewComments,
+      },
+      issues: {
+        listComments: mockListIssueComments,
       },
       repos: {
         getCombinedStatusForRef: mockGetCombinedStatus,
@@ -340,6 +347,7 @@ describe("getPRReviewInfo", () => {
     resetClient();
     reviewsData = [];
     reviewCommentsData = [];
+    issueCommentsData = [];
   });
 
   test("returns hasChangesRequested:false when no reviews", async () => {
@@ -525,6 +533,47 @@ describe("getPRReviewInfo", () => {
 
     expect(info.hasChangesRequested).toBe(true);
     expect(info.reviewSummaries).toContain("unknown");
+  });
+
+  test("latestIssueCommentId is null when no PR-level comments", async () => {
+    issueCommentsData = [];
+
+    const info = await getPRReviewInfo("owner", "repo", 10);
+
+    expect(info.latestIssueCommentId).toBeNull();
+    expect(info.prComments).toBe("");
+  });
+
+  test("latestIssueCommentId is the highest comment ID", async () => {
+    issueCommentsData = [
+      { id: 800, user: { login: "alice" }, body: "First comment" },
+      { id: 900, user: { login: "bob" }, body: "Second comment" },
+      { id: 850, user: { login: "charlie" }, body: "Third comment" },
+    ];
+
+    const info = await getPRReviewInfo("owner", "repo", 11);
+
+    expect(info.latestIssueCommentId).toBe("900");
+  });
+
+  test("prComments contains formatted comment text", async () => {
+    issueCommentsData = [
+      { id: 1000, user: { login: "alice" }, body: "Can you explain this?" },
+    ];
+
+    const info = await getPRReviewInfo("owner", "repo", 12);
+
+    expect(info.prComments).toContain("alice");
+    expect(info.prComments).toContain("Can you explain this?");
+  });
+
+  test("prComments handles null user without throwing", async () => {
+    issueCommentsData = [{ id: 1100, user: null, body: "Anonymous comment" }];
+
+    const info = await getPRReviewInfo("owner", "repo", 13);
+
+    expect(info.prComments).toContain("unknown");
+    expect(info.prComments).toContain("Anonymous comment");
   });
 });
 

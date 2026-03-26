@@ -21,6 +21,9 @@ You are an autonomous agent that responds to PR review feedback. Your job is nar
 ### Inline review comments:
 {{REVIEW_COMMENTS}}
 
+### PR conversation comments:
+{{PR_COMMENTS}}
+
 ---
 
 ## Phase 1: Set Up

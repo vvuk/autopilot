@@ -121,6 +121,7 @@ export async function checkOpenPRs(opts: {
           return null;
         }
         const prNumber = Number.parseInt(prMatch[1], 10);
+	info(`Issue ${issue.id}: PR ${prNumber}`);
         return { issue, prNumber };
       }),
     )
@@ -173,7 +174,8 @@ export async function checkOpenPRs(opts: {
     // that happen to carry matching labels.
     const isAutopilotBranch =
       status.branch.startsWith("autopilot-") ||
-      status.branch.startsWith("worktree-");
+      status.branch.startsWith("worktree-") ||
+      status.branch.startsWith("autopilot/");
     if (hasOwnershipFilter && !isAutopilotBranch) {
       warn(
         `Skipping PR #${prNumber} (${issue.identifier}): branch '${status.branch}' is not autopilot-managed`,
@@ -235,11 +237,13 @@ export async function checkOpenPRs(opts: {
         continue;
       }
 
-      if (
-        reviewInfo.hasChangesRequested &&
-        reviewInfo.latestChangesRequestedReviewId !== null
-      ) {
-        const dedupKey = `${issue.id}:${reviewInfo.latestChangesRequestedReviewId}`;
+      const hasFeedback =
+        (reviewInfo.hasChangesRequested &&
+          reviewInfo.latestChangesRequestedReviewId !== null) ||
+        reviewInfo.latestIssueCommentId !== null;
+
+      if (hasFeedback) {
+        const dedupKey = `${issue.id}:r${reviewInfo.latestChangesRequestedReviewId ?? "none"}:c${reviewInfo.latestIssueCommentId ?? "none"}`;
         if (!handledReviewIds.has(dedupKey)) {
           handledReviewIds.add(dedupKey);
           const promise = respondToReview({
@@ -249,6 +253,7 @@ export async function checkOpenPRs(opts: {
             branch: status.branch,
             reviewComments: reviewInfo.reviewComments,
             reviewSummaries: reviewInfo.reviewSummaries,
+            prComments: reviewInfo.prComments,
             ...opts,
           });
           fixerPromises.push(promise);
@@ -272,6 +277,7 @@ async function respondToReview(opts: {
   branch: string;
   reviewComments: string;
   reviewSummaries: string;
+  prComments: string;
   config: AutopilotConfig;
   projectPath: string;
   linearIds: LinearIds;
@@ -284,6 +290,7 @@ async function respondToReview(opts: {
     branch,
     reviewComments,
     reviewSummaries,
+    prComments,
     config,
     projectPath,
     state,
@@ -304,6 +311,7 @@ async function respondToReview(opts: {
     PROJECT_NAME: projectPath.split("/").pop() || "unknown",
     REVIEW_COMMENTS: reviewComments,
     REVIEW_SUMMARIES: reviewSummaries,
+    PR_COMMENTS: prComments,
     IN_REVIEW_STATE: config.linear.states.in_review,
     BLOCKED_STATE: config.linear.states.blocked,
   });

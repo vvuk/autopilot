@@ -54,6 +54,7 @@ let prData: Record<string, unknown> = {
 let checkRunsData: Record<string, unknown> = { check_runs: [] };
 let reviewsData: Record<string, unknown>[] = [];
 let reviewCommentsData: Record<string, unknown>[] = [];
+let issueCommentsData: Record<string, unknown>[] = [];
 
 const mockPullsGet = mock(() => Promise.resolve({ data: prData }));
 const mockChecksListForRef = mock(() =>
@@ -62,6 +63,9 @@ const mockChecksListForRef = mock(() =>
 const mockListReviews = mock(() => Promise.resolve({ data: reviewsData }));
 const mockListReviewComments = mock(() =>
   Promise.resolve({ data: reviewCommentsData }),
+);
+const mockListIssueComments = mock(() =>
+  Promise.resolve({ data: issueCommentsData }),
 );
 
 import { resetClient } from "./lib/github";
@@ -96,6 +100,7 @@ beforeEach(() => {
           listReviews: mockListReviews,
           listReviewComments: mockListReviewComments,
         },
+        issues: { listComments: mockListIssueComments },
         checks: { listForRef: mockChecksListForRef },
       };
     },
@@ -110,6 +115,7 @@ beforeEach(() => {
   checkRunsData = { check_runs: [] };
   reviewsData = [];
   reviewCommentsData = [];
+  issueCommentsData = [];
   mockPullsGet.mockImplementation(() => Promise.resolve({ data: prData }));
   mockListReviews.mockImplementation(() =>
     Promise.resolve({ data: reviewsData }),
@@ -718,6 +724,7 @@ describe("checkOpenPRs — review responder", () => {
     };
     reviewsData = [];
     reviewCommentsData = [];
+    issueCommentsData = [];
   });
 
   test("does NOT spawn review responder when respond_to_reviews is false", async () => {
@@ -911,6 +918,73 @@ describe("checkOpenPRs — review responder", () => {
     const secondResult = await checkOpenPRs(makeOpts(state, config));
     expect(secondResult).toHaveLength(1);
     await Promise.all(secondResult);
+  });
+
+  test("spawns review responder when CI passing and PR-level comment exists (no review)", async () => {
+    const issue = makeIssue("rr-comment", "https://github.com/o/r/pull/207");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    issueCommentsData = [
+      { id: 3001, user: { login: "bob" }, body: "Can you add a test for this?" },
+    ];
+
+    const config = makeConfig(3, true);
+    const result = await checkOpenPRs(makeOpts(state, config));
+
+    expect(result).toHaveLength(1);
+    await Promise.all(result);
+  });
+
+  test("dedup: same PR comment does not trigger multiple responders", async () => {
+    const issue = makeIssue("rr-comment-dedup", "https://github.com/o/r/pull/208");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    issueCommentsData = [
+      { id: 3002, user: { login: "bob" }, body: "LGTM but fix the typo" },
+    ];
+
+    const config = makeConfig(3, true);
+
+    const firstResult = await checkOpenPRs(makeOpts(state, config));
+    expect(firstResult).toHaveLength(1);
+    await Promise.all(firstResult);
+
+    // Same comment data → same dedup key → no new responder
+    const secondResult = await checkOpenPRs(makeOpts(state, config));
+    expect(secondResult).toHaveLength(0);
+  });
+
+  test("new PR comment after first is handled triggers new responder", async () => {
+    const issue = makeIssue("rr-comment-new", "https://github.com/o/r/pull/209");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    issueCommentsData = [
+      { id: 3003, user: { login: "bob" }, body: "First comment" },
+    ];
+
+    const config = makeConfig(3, true);
+
+    const firstResult = await checkOpenPRs(makeOpts(state, config));
+    expect(firstResult).toHaveLength(1);
+    await Promise.all(firstResult);
+
+    // A new comment arrives (higher ID)
+    issueCommentsData = [
+      { id: 3003, user: { login: "bob" }, body: "First comment" },
+      { id: 3004, user: { login: "bob" }, body: "Follow-up comment" },
+    ];
+
+    const secondResult = await checkOpenPRs(makeOpts(state, config));
+    expect(secondResult).toHaveLength(1);
+    await Promise.all(secondResult);
+  });
+
+  test("does NOT spawn review responder when no reviews and no PR comments", async () => {
+    const issue = makeIssue("rr-empty", "https://github.com/o/r/pull/210");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    // reviewsData = [], issueCommentsData = [] (set in beforeEach)
+
+    const config = makeConfig(3, true);
+    const result = await checkOpenPRs(makeOpts(state, config));
+
+    expect(result).toHaveLength(0);
   });
 });
 

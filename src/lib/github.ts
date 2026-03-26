@@ -165,10 +165,14 @@ export interface PRReviewInfo {
   hasChangesRequested: boolean;
   /** ID of the latest CHANGES_REQUESTED review, used for dedup. Null if none. */
   latestChangesRequestedReviewId: string | null;
+  /** ID of the latest PR-level (issue) comment, used for dedup. Null if none. */
+  latestIssueCommentId: string | null;
   /** Formatted inline review comments for use in prompts. */
   reviewComments: string;
   /** Formatted reviewer summary bodies for use in prompts. */
   reviewSummaries: string;
+  /** Formatted PR-level (non-inline) comments for use in prompts. */
+  prComments: string;
 }
 
 /**
@@ -182,21 +186,32 @@ export async function getPRReviewInfo(
 ): Promise<PRReviewInfo> {
   const octokit = getGitHubClient();
 
-  const { data: reviews } = await withRetry(
-    () =>
-      octokit.rest.pulls.listReviews({ owner, repo, pull_number: prNumber }),
-    `listReviews #${prNumber}`,
-  );
-
-  const { data: comments } = await withRetry(
-    () =>
-      octokit.rest.pulls.listReviewComments({
-        owner,
-        repo,
-        pull_number: prNumber,
-      }),
-    `listReviewComments #${prNumber}`,
-  );
+  const [{ data: reviews }, { data: comments }, { data: issueComments }] =
+    await Promise.all([
+      withRetry(
+        () =>
+          octokit.rest.pulls.listReviews({ owner, repo, pull_number: prNumber }),
+        `listReviews #${prNumber}`,
+      ),
+      withRetry(
+        () =>
+          octokit.rest.pulls.listReviewComments({
+            owner,
+            repo,
+            pull_number: prNumber,
+          }),
+        `listReviewComments #${prNumber}`,
+      ),
+      withRetry(
+        () =>
+          octokit.rest.issues.listComments({
+            owner,
+            repo,
+            issue_number: prNumber,
+          }),
+        `listIssueComments #${prNumber}`,
+      ),
+    ]);
 
   // Determine the latest review per user (handles re-reviews)
   const latestByUser = new Map<string, (typeof reviews)[0]>();
@@ -246,11 +261,24 @@ export async function getPRReviewInfo(
     )
     .join("\n\n");
 
+  // Find the latest PR-level (issue) comment by ID (IDs are monotonically increasing)
+  let latestIssueCommentId: string | null = null;
+  if (issueComments.length > 0) {
+    const latest = issueComments.reduce((a, b) => (a.id > b.id ? a : b));
+    latestIssueCommentId = String(latest.id);
+  }
+
+  const prComments = issueComments
+    .map((c) => `Comment by ${c.user?.login ?? "unknown"}: ${c.body}`)
+    .join("\n\n");
+
   return {
     hasChangesRequested,
     latestChangesRequestedReviewId,
+    latestIssueCommentId,
     reviewComments,
     reviewSummaries,
+    prComments,
   };
 }
 

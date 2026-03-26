@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const TEST_TMP = join(process.cwd(), ".tmp", "tests");
 
-import { collectUnknownKeys, DEFAULTS, deepMerge, loadConfig } from "./config";
+import { type AutopilotConfig, collectUnknownKeys, DEFAULTS, deepMerge, loadConfig } from "./config";
 
 let tmpDir: string;
 
@@ -1065,5 +1065,25 @@ reviewer:
   max_issues_per_review: 50
 `);
     expect(() => loadConfig(dir)).not.toThrow();
+  });
+});
+
+describe("github app auth config", () => {
+  test("app_id and installation_id default to 0", () => {
+    const config = deepMerge(
+      DEFAULTS as unknown as Record<string, unknown>,
+      {},
+    ) as unknown as AutopilotConfig;
+    expect(config.github.app_id).toBe(0);
+    expect(config.github.installation_id).toBe(0);
+  });
+
+  test("app_id and installation_id are loaded from yaml", () => {
+    const config = deepMerge(
+      DEFAULTS as unknown as Record<string, unknown>,
+      { github: { app_id: 12345, installation_id: 67890 } },
+    ) as unknown as AutopilotConfig;
+    expect(config.github.app_id).toBe(12345);
+    expect(config.github.installation_id).toBe(67890);
   });
 });

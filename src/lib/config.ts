@@ -74,6 +74,8 @@ export interface MonitorConfig {
 export interface GithubConfig {
   repo: string; // "owner/repo" override — empty = auto-detect from git remote
   automerge: boolean; // Enable auto-merge on PRs created by the executor
+  app_id: number; // 0 = not configured
+  installation_id: number; // 0 = not configured
 }
 
 export interface ProjectConfig {
@@ -191,6 +193,8 @@ export const DEFAULTS: AutopilotConfig = {
   github: {
     repo: "",
     automerge: false,
+    app_id: 0,
+    installation_id: 0,
   },
   project: {
     name: "",

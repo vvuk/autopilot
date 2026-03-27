@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import type { SandboxConfig } from "./config";
 import { enableAutoMerge } from "./github";
+import { getCachedAppToken } from "./github-app-auth";
 import { createProjectStatusUpdate } from "./linear";
 import { warn } from "./logger";
 
@@ -20,7 +21,6 @@ import { warn } from "./logger";
 export const SANDBOX_BASE_DOMAINS = [
   "github.com",
   "api.github.com",
-  "api.githubcopilot.com",
   "mcp.linear.app",
 ];
 
@@ -85,9 +85,10 @@ export function buildMcpServers(linearToken?: string): Record<string, unknown> {
       headers: { Authorization: `Bearer ${token}` },
     },
     github: {
-      type: "http",
-      url: "https://api.githubcopilot.com/mcp/",
-      headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` },
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "@github/github-mcp-server@latest", "stdio"],
+      env: { GITHUB_TOKEN: getCachedAppToken() ?? process.env.GITHUB_TOKEN },
     },
     autopilot: createSdkMcpServer({
       name: "autopilot",
@@ -117,6 +118,11 @@ export function buildAgentEnv(): Record<string, string> {
     if (process.env[key]) {
       env[key] = process.env[key] as string;
     }
+  }
+  // Override GITHUB_TOKEN with App token if available (takes precedence over PAT in env)
+  const appToken = getCachedAppToken();
+  if (appToken) {
+    env.GITHUB_TOKEN = appToken;
   }
   env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
   // Block system gitconfig (rarely useful, can cause surprises).

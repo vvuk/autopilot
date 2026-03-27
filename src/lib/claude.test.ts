@@ -67,6 +67,10 @@ const mockQuery = mock(
 // must NOT be mocked via mock.module() because it causes permanent cross-file leakage
 // (Bun bug #7823). Clone is injected via _clone instead (see beforeEach below).
 
+mock.module("./github-app-auth", () => ({
+  getCachedAppToken: () => null,
+}));
+
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
   query: mockQuery,
   createSdkMcpServer: (_config: unknown) => ({ type: "sdk-mcp" }),
@@ -228,10 +232,10 @@ describe("summarizeToolUse", () => {
 // ─── buildMcpServers ─────────────────────────────────────────────────────────
 
 describe("buildMcpServers", () => {
-  test("linear and github entries have type 'http'", () => {
+  test("linear entry has type 'http' and github entry has type 'stdio'", () => {
     const servers = buildMcpServers();
     expect((servers.linear as Record<string, unknown>).type).toBe("http");
-    expect((servers.github as Record<string, unknown>).type).toBe("http");
+    expect((servers.github as Record<string, unknown>).type).toBe("stdio");
   });
 
   test("linear uses correct URL and LINEAR_API_KEY bearer token", () => {
@@ -243,12 +247,18 @@ describe("buildMcpServers", () => {
     );
   });
 
-  test("github uses correct URL and GITHUB_TOKEN bearer token", () => {
+  test("github uses stdio command with GITHUB_TOKEN in env", () => {
     const servers = buildMcpServers();
     const github = servers.github as Record<string, unknown>;
-    expect(github.url).toBe("https://api.githubcopilot.com/mcp/");
-    expect((github.headers as Record<string, string>).Authorization).toBe(
-      "Bearer test-github-token",
+    expect(github.type).toBe("stdio");
+    expect(github.command).toBe("npx");
+    expect(github.args).toEqual([
+      "-y",
+      "@github/github-mcp-server@latest",
+      "stdio",
+    ]);
+    expect((github.env as Record<string, string>).GITHUB_TOKEN).toBe(
+      "test-github-token",
     );
   });
 });

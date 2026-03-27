@@ -124,7 +124,7 @@ function makeConfig(
       respond_to_reviews: false,
       review_responder_timeout_minutes: 20,
     },
-    github: { repo: "", automerge: false },
+    github: { repo: "", automerge: false, app_id: 0, installation_id: 0 },
     project: { name: "" },
     git: {
       user_name: "autopilot[bot]",

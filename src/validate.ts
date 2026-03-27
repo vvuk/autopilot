@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import type { AutopilotConfig } from "./lib/config";
 import { loadConfig, resolveProjectPath } from "./lib/config";
 import { detectRepo, getGitHubClient } from "./lib/github";
+import { isAppAuthConfigured } from "./lib/github-app-auth";
 import { resolveLinearIds } from "./lib/linear";
 import { error, header, info, ok, warn } from "./lib/logger";
 import { AUTOPILOT_ROOT, loadPrompt } from "./lib/prompt";
@@ -127,6 +128,16 @@ export async function checkGitHub(
     config.github.repo || undefined,
   );
   const octokit = getGitHubClient();
+
+  // App installation tokens can't call GET /user — use a repo endpoint instead.
+  if (isAppAuthConfigured(config)) {
+    await withRetry(
+      () => octokit.rest.repos.get({ owner, repo }),
+      "validateGitHub",
+    );
+    return `Connected via GitHub App — repo ${owner}/${repo}`;
+  }
+
   const { data: user } = await withRetry(
     () => octokit.rest.users.getAuthenticated(),
     "validateGitHub",

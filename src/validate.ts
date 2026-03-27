@@ -39,11 +39,18 @@ export async function checkConfig(projectPath: string): Promise<string> {
  */
 export async function checkEnvVars(opts?: {
   hasOAuth?: boolean;
+  hasGithubApp?: boolean;
 }): Promise<string> {
   const missing: string[] = [];
   if (!process.env.LINEAR_API_KEY && !opts?.hasOAuth)
     missing.push("LINEAR_API_KEY (or configure OAuth)");
-  if (!process.env.GITHUB_TOKEN) missing.push("GITHUB_TOKEN");
+  if (opts?.hasGithubApp) {
+    if (!process.env.GITHUB_APP_PRIVATE_KEY_PATH && !process.env.GITHUB_APP_PRIVATE_KEY)
+      missing.push("GITHUB_APP_PRIVATE_KEY(_PATH)");
+  } else {
+    if (!process.env.GITHUB_TOKEN)
+      missing.push("GITHUB_TOKEN");
+  }
 
   if (missing.length > 0) {
     throw new Error(`Missing environment variables: ${missing.join(", ")}`);
@@ -51,7 +58,10 @@ export async function checkEnvVars(opts?: {
   const linearAuth = process.env.LINEAR_API_KEY
     ? "LINEAR_API_KEY"
     : "Linear OAuth";
-  return `${linearAuth}, GITHUB_TOKEN — all set`;
+  const githubFlow = opts?.hasGithubApp
+    ? "GitHub App flow"
+    : "GITHUB_TOKEN";
+  return `${linearAuth}, ${githubFlow} — all set`;
 }
 
 /**
@@ -242,8 +252,9 @@ export async function runPreflight(
   warnings: CheckResult[];
 }> {
   const hasOAuth = !!config.linear.oauth;
+  const hasGithubApp = !!config.github.app_id && !!config.github.installation_id;
   const checks: Array<[string, () => Promise<string>]> = [
-    ["Environment variables", () => checkEnvVars({ hasOAuth })],
+    ["Environment variables", () => checkEnvVars({ hasOAuth, hasGithubApp })],
     ["Git remote", () => checkGitRemote(projectPath, config)],
     ["Clone directory", () => checkCloneDir(projectPath)],
     ["Linear connection", () => checkLinear(config)],

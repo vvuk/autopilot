@@ -677,4 +677,16 @@ describe("initGitHubAuth + App auth path", () => {
     const client2 = getGitHubClient();
     expect(client1).not.toBe(client2);
   });
+
+  test("getGitHubClient throws cache-empty error when App auth configured but cache cold", async () => {
+    mockAppConfigured = true;
+    mockCachedToken = null; // cache is cold
+    resetClient();
+    const cfg = {
+      github: { app_id: 1, installation_id: 1 },
+    } as unknown as Parameters<typeof initGitHubAuth>[0];
+    await initGitHubAuth(cfg);
+    // Does NOT fall through to GITHUB_TOKEN — throws about cache instead
+    expect(() => getGitHubClient()).toThrow("token cache is empty");
+  });
 });

@@ -32,18 +32,22 @@ export async function initGitHubAuth(config: AutopilotConfig): Promise<void> {
 export function getGitHubClient(): Octokit {
   if (_config && isAppAuthConfigured(_config)) {
     const appToken = getCachedAppToken();
-    if (appToken) {
-      if (_client && _clientToken === appToken) return _client;
-      _client = new Octokit({ auth: appToken });
-      _clientToken = appToken;
-      return _client;
+    if (!appToken) {
+      throw new Error(
+        "GitHub App auth is configured but the token cache is empty. " +
+          "Ensure initGitHubAuth() was called at startup.",
+      );
     }
+    if (_client && _clientToken === appToken) return _client;
+    _client = new Octokit({ auth: appToken });
+    _clientToken = appToken;
+    return _client;
   }
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     throw new Error(
-      "No GitHub credentials found. Either set GITHUB_TOKEN (personal access token) or " +
+      "No GitHub credentials found. Set GITHUB_TOKEN (personal access token) or " +
         "configure github.app_id + github.installation_id in .autopilot.yml with " +
         "GITHUB_APP_PRIVATE_KEY / GITHUB_APP_PRIVATE_KEY_PATH.",
     );

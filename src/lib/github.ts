@@ -1,33 +1,67 @@
 import { Octokit } from "octokit";
-import { warn } from "./logger";
+import type { AutopilotConfig } from "./config";
+import {
+  getCachedAppToken,
+  getGitHubAppToken,
+  isAppAuthConfigured,
+} from "./github-app-auth";
+import { info, warn } from "./logger";
 import { withRetry } from "./retry";
 
 let _client: Octokit | null = null;
+let _clientToken: string | null = null;
+let _config: AutopilotConfig | null = null;
 
 /**
- * Get or create the Octokit client. Reads GITHUB_TOKEN from environment.
+ * Call once at startup with the loaded config to enable GitHub App auth.
+ * Warms the token cache so getGitHubClient() can work synchronously.
+ */
+export async function initGitHubAuth(config: AutopilotConfig): Promise<void> {
+  _config = config;
+  if (isAppAuthConfigured(config)) {
+    await getGitHubAppToken(config);
+    info(`GitHub App auth active (app_id: ${config.github.app_id})`);
+  }
+}
+
+/**
+ * Get or create the Octokit client.
+ * Uses GitHub App installation token if configured via initGitHubAuth(),
+ * otherwise falls back to GITHUB_TOKEN environment variable.
  */
 export function getGitHubClient(): Octokit {
-  if (_client) return _client;
+  if (_config && isAppAuthConfigured(_config)) {
+    const appToken = getCachedAppToken();
+    if (appToken) {
+      if (_client && _clientToken === appToken) return _client;
+      _client = new Octokit({ auth: appToken });
+      _clientToken = appToken;
+      return _client;
+    }
+  }
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     throw new Error(
-      "GITHUB_TOKEN environment variable is not set.\n" +
-        "Create one at: https://github.com/settings/tokens\n" +
-        "Then: export GITHUB_TOKEN=ghp_...",
+      "No GitHub credentials found. Either set GITHUB_TOKEN (personal access token) or " +
+        "configure github.app_id + github.installation_id in .autopilot.yml with " +
+        "GITHUB_APP_PRIVATE_KEY / GITHUB_APP_PRIVATE_KEY_PATH.",
     );
   }
 
+  if (_client && !_clientToken) return _client;
   _client = new Octokit({ auth: token });
+  _clientToken = null;
   return _client;
 }
 
 /**
- * Reset the cached client. Used in tests to prevent singleton leakage.
+ * Reset the cached client and config. Used in tests to prevent singleton leakage.
  */
 export function resetClient(): void {
   _client = null;
+  _clientToken = null;
+  _config = null;
 }
 
 /**

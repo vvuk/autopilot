@@ -48,6 +48,17 @@ const mockGraphql = mock(() =>
     : Promise.resolve({}),
 );
 
+// Mock github-app-auth to control App auth behavior in tests
+let mockCachedToken: string | null = null;
+let mockAppConfigured = false;
+
+mock.module("./github-app-auth", () => ({
+  isAppAuthConfigured: () => mockAppConfigured,
+  getCachedAppToken: () => mockCachedToken,
+  getGitHubAppToken: async () => mockCachedToken ?? "ghs_mock",
+  resetAppAuthCache: () => {},
+}));
+
 // Mock octokit so github.ts uses our mock Octokit client.
 mock.module("octokit", () => ({
   Octokit: class MockOctokit {
@@ -73,8 +84,10 @@ mock.module("octokit", () => ({
 import {
   detectRepo,
   enableAutoMerge,
+  getGitHubClient,
   getPRReviewInfo,
   getPRStatus,
+  initGitHubAuth,
   resetClient,
 } from "./github";
 
@@ -611,5 +624,57 @@ describe("enableAutoMerge", () => {
 
     expect(result).toContain("Failed to enable auto-merge");
     expect(result).toContain("GraphQL mutation failed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initGitHubAuth + App auth path
+// ---------------------------------------------------------------------------
+
+describe("initGitHubAuth + App auth path", () => {
+  beforeEach(() => {
+    resetClient();
+    mockAppConfigured = false;
+    mockCachedToken = null;
+  });
+
+  test("getGitHubClient uses GITHUB_TOKEN env var when App auth is not configured", () => {
+    // process.env.GITHUB_TOKEN is set at top of file as "test-token-github"
+    const client = getGitHubClient();
+    expect(client).toBeDefined();
+  });
+
+  test("getGitHubClient throws descriptive error when neither App auth nor GITHUB_TOKEN is configured", () => {
+    const saved = process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    resetClient();
+    expect(() => getGitHubClient()).toThrow("No GitHub credentials found");
+    process.env.GITHUB_TOKEN = saved;
+  });
+
+  test("getGitHubClient uses cached App token when App auth is configured and cache is warm", async () => {
+    mockAppConfigured = true;
+    mockCachedToken = "ghs_warm_token";
+    resetClient();
+    const cfg = {
+      github: { app_id: 1, installation_id: 1 },
+    } as unknown as Parameters<typeof initGitHubAuth>[0];
+    await initGitHubAuth(cfg);
+    const client = getGitHubClient();
+    expect(client).toBeDefined();
+  });
+
+  test("getGitHubClient recreates Octokit when cached App token changes", async () => {
+    mockAppConfigured = true;
+    mockCachedToken = "ghs_token_v1";
+    resetClient();
+    const cfg = {
+      github: { app_id: 1, installation_id: 1 },
+    } as unknown as Parameters<typeof initGitHubAuth>[0];
+    await initGitHubAuth(cfg);
+    const client1 = getGitHubClient();
+    mockCachedToken = "ghs_token_v2";
+    const client2 = getGitHubClient();
+    expect(client1).not.toBe(client2);
   });
 });

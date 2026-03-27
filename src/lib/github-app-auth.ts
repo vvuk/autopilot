@@ -77,9 +77,9 @@ export function isAppAuthConfigured(config: AutopilotConfig): boolean {
   return (
     config.github.app_id !== 0 &&
     config.github.installation_id !== 0 &&
-    !!(
-      process.env.GITHUB_APP_PRIVATE_KEY ||
-      process.env.GITHUB_APP_PRIVATE_KEY_PATH
+    (
+      !!process.env.GITHUB_APP_PRIVATE_KEY ||
+      !!process.env.GITHUB_APP_PRIVATE_KEY_PATH
     )
   );
 }

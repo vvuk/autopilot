@@ -17,7 +17,8 @@ import { closeAllAgents } from "./lib/claude";
 import { loadConfig, resolveProjectPath } from "./lib/config";
 import { openDb, pruneActivityLogs } from "./lib/db";
 import { interruptibleSleep, isFatalError } from "./lib/errors";
-import { detectRepo } from "./lib/github";
+import { detectRepo, initGitHubAuth } from "./lib/github";
+import { getGitHubAppToken, isAppAuthConfigured } from "./lib/github-app-auth";
 import {
   configureLinearAuth,
   getTriageIssues,
@@ -153,6 +154,10 @@ if (config.reviewer.enabled) {
 info(
   `Models: executor=${config.executor.model}, planning=${config.planning.model}, projects=${config.projects.model}`,
 );
+
+// --- Initialize GitHub auth (App auth or PAT) ---
+
+await initGitHubAuth(config);
 
 // --- Detect GitHub repo ---
 
@@ -350,6 +355,11 @@ console.log();
 
 while (!shuttingDown) {
   try {
+    // Keep the GitHub App token cache warm for sync callers (monitor, planner)
+    if (isAppAuthConfigured(config)) {
+      await getGitHubAppToken(config);
+    }
+
     if (state.isPaused()) {
       await interruptibleSleep(POLL_INTERVAL_MS, shutdownController.signal);
       continue;

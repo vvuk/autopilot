@@ -314,9 +314,7 @@ describe("getGitHubAppToken", () => {
 
   test("refreshes token when within 5 minutes of expiry", async () => {
     fetchSpy
-      .mockResolvedValueOnce(
-        makeTokenResponse("ghs_expiring_soon", 4 * 60_000),
-      )
+      .mockResolvedValueOnce(makeTokenResponse("ghs_expiring_soon", 4 * 60_000))
       .mockResolvedValueOnce(makeTokenResponse("ghs_fresh"));
     await getGitHubAppToken(config);
     const token = await getGitHubAppToken(config);

@@ -224,7 +224,11 @@ export async function getPRReviewInfo(
     await Promise.all([
       withRetry(
         () =>
-          octokit.rest.pulls.listReviews({ owner, repo, pull_number: prNumber }),
+          octokit.rest.pulls.listReviews({
+            owner,
+            repo,
+            pull_number: prNumber,
+          }),
         `listReviews #${prNumber}`,
       ),
       withRetry(

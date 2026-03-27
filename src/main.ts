@@ -96,6 +96,10 @@ configureLinearAuth(
     : undefined,
 );
 
+// --- Initialize GitHub auth (App auth or PAT) ---
+// Must run before preflight, which calls getGitHubClient() to verify connectivity.
+await initGitHubAuth(config);
+
 // --- Preflight validation ---
 const preflight = await runPreflight(projectPath, config);
 for (const result of preflight.results) {
@@ -154,10 +158,6 @@ if (config.reviewer.enabled) {
 info(
   `Models: executor=${config.executor.model}, planning=${config.planning.model}, projects=${config.projects.model}`,
 );
-
-// --- Initialize GitHub auth (App auth or PAT) ---
-
-await initGitHubAuth(config);
 
 // --- Detect GitHub repo ---
 

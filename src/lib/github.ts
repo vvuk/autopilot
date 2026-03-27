@@ -21,6 +21,8 @@ export async function initGitHubAuth(config: AutopilotConfig): Promise<void> {
   if (isAppAuthConfigured(config)) {
     await getGitHubAppToken(config);
     info(`GitHub App auth active (app_id: ${config.github.app_id})`);
+  } else {
+    info(`GitHub user token auth`);
   }
 }
 

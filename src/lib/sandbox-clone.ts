@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { getCachedAppToken } from "./github-app-auth";
 import { info, warn } from "./logger";
 
 /** Prefix applied to all autopilot-managed clone names. Used to namespace
@@ -11,7 +12,11 @@ function clonePath(projectPath: string, name: string): string {
   return resolve(projectPath, ".claude", "clones", name);
 }
 
-function execSync(cwd: string, cmd: string, args: string[]): string | undefined {
+function execSync(
+  cwd: string,
+  cmd: string,
+  args: string[],
+): string | undefined {
   const result = Bun.spawnSync([cmd, ...args], {
     cwd,
     stderr: "pipe",
@@ -174,6 +179,30 @@ export async function createClone(
     );
   }
 
+  // When using GitHub App auth, rewrite the remote URL to embed the installation token
+  // so git push works without SSH keys. Handles both SSH and HTTPS original remotes.
+  // The token is short-lived (~1h) but matches the agent run lifetime.
+  const appToken = getCachedAppToken();
+  if (appToken) {
+    const httpsMatch = githubUrl.match(/github\.com\/([^/]+)\/([^/.]+)/);
+    const sshMatch = githubUrl.match(/github\.com:([^/]+)\/([^/.]+)/);
+    const match = httpsMatch ?? sshMatch;
+    if (match) {
+      const tokenUrl = `https://x-access-token:${appToken}@github.com/${match[1]}/${match[2]}.git`;
+      const tokenUrlErr = gitSync(dest, [
+        "remote",
+        "set-url",
+        "origin",
+        tokenUrl,
+      ]);
+      if (tokenUrlErr) {
+        throw new Error(
+          `Failed to set token remote URL in clone '${name}': ${tokenUrlErr}`,
+        );
+      }
+    }
+  }
+
   // Disable commit/tag signing in the clone — the sandbox may not have
   // access to GPG/SSH signing keys and we don't need signed commits.
   // This overrides any global config (e.g. commit.gpgsign=true).
@@ -247,7 +276,12 @@ export async function createClone(
 
   // New naming: autopilot-<name>
   const branch = `autopilot-${name}`;
-  const branchErr = gitSync(dest, ["checkout", "-b", branch, `origin/${defaultBranch}`]);
+  const branchErr = gitSync(dest, [
+    "checkout",
+    "-b",
+    branch,
+    `origin/${defaultBranch}`,
+  ]);
   if (branchErr) {
     throw new Error(
       `Failed to create branch '${branch}' in clone '${name}': ${branchErr}`,
@@ -257,16 +291,11 @@ export async function createClone(
   info(`Running setup in ${dest}...`);
 
   let setupErr = execSync(dest, "mise", ["trust"]);
-  if (!setupErr)
-      setupErr = execSync(dest, "lefthook", ["install"]);
-  if (!setupErr)
-      setupErr = execSync(dest, "uv", ["sync"]);
-  if (!setupErr)
-      setupErr = execSync(dest + "/web", "npm", ["i"]);
+  if (!setupErr) setupErr = execSync(dest, "lefthook", ["install"]);
+  if (!setupErr) setupErr = execSync(dest, "uv", ["sync"]);
+  if (!setupErr) setupErr = execSync(dest + "/web", "npm", ["i"]);
   if (setupErr) {
-    throw new Error(
-      `Failed to setup in clone '${name}': ${setupErr}`,
-    );
+    throw new Error(`Failed to setup in clone '${name}': ${setupErr}`);
   }
 
   return { path: dest, branch };

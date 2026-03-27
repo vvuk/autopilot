@@ -9,6 +9,13 @@ import {
 } from "bun:test";
 import * as fs from "node:fs";
 
+// Control getCachedAppToken return value per-test via this variable
+let mockAppToken: string | null = null;
+
+mock.module("./github-app-auth", () => ({
+  getCachedAppToken: () => mockAppToken,
+}));
+
 import {
   AUTOPILOT_PREFIX,
   createClone,
@@ -73,6 +80,7 @@ function defaultSpawnHandler(cmds: string[]): SpawnResult {
 }
 
 beforeEach(() => {
+  mockAppToken = null;
   existsSpy = spyOn(fs, "existsSync").mockReturnValue(false);
   rmSyncSpy = spyOn(fs, "rmSync").mockReturnValue(
     undefined as unknown as undefined,
@@ -548,5 +556,87 @@ describe("sweepClones", () => {
     expect(rmSyncSpy).toHaveBeenCalledTimes(1);
     const removedPath = rmSyncSpy.mock.calls[0][0] as string;
     expect(removedPath).toContain("ap-ENG-2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createClone — App token remote URL rewrite
+// ---------------------------------------------------------------------------
+
+describe("createClone — App token remote URL rewrite", () => {
+  test("rewrites SSH remote URL to HTTPS with App token when cache is warm", async () => {
+    mockAppToken = "ghs_app_token";
+    const calls: string[][] = [];
+    spawnSpy = spyOn(Bun, "spawnSync").mockImplementation(((cmd: string[]) => {
+      calls.push([...cmd]);
+      if (cmd[1] === "remote" && cmd[2] === "get-url") {
+        return spawnOk("git@github.com:owner/repo.git");
+      }
+      if (cmd[1] === "symbolic-ref") return spawnOk("refs/remotes/origin/main");
+      return spawnOk();
+    }) as any);
+
+    await createClone(PROJECT, "test-app-clone");
+
+    const tokenSetUrl = calls.find(
+      (c) =>
+        c[1] === "remote" &&
+        c[2] === "set-url" &&
+        c[3] === "origin" &&
+        c[4]?.includes("x-access-token"),
+    );
+    expect(tokenSetUrl).toBeDefined();
+    expect(tokenSetUrl![4]).toBe(
+      "https://x-access-token:ghs_app_token@github.com/owner/repo.git",
+    );
+  });
+
+  test("rewrites HTTPS remote URL to HTTPS with App token", async () => {
+    mockAppToken = "ghs_https_token";
+    const calls: string[][] = [];
+    spawnSpy = spyOn(Bun, "spawnSync").mockImplementation(((cmd: string[]) => {
+      calls.push([...cmd]);
+      if (cmd[1] === "remote" && cmd[2] === "get-url") {
+        return spawnOk("https://github.com/owner/repo.git");
+      }
+      if (cmd[1] === "symbolic-ref") return spawnOk("refs/remotes/origin/main");
+      return spawnOk();
+    }) as any);
+
+    await createClone(PROJECT, "test-app-clone2");
+
+    const tokenSetUrl = calls.find(
+      (c) =>
+        c[1] === "remote" &&
+        c[2] === "set-url" &&
+        c[4]?.includes("x-access-token"),
+    );
+    expect(tokenSetUrl).toBeDefined();
+    expect(tokenSetUrl![4]).toBe(
+      "https://x-access-token:ghs_https_token@github.com/owner/repo.git",
+    );
+  });
+
+  test("does not rewrite remote URL when App token cache is empty", async () => {
+    mockAppToken = null;
+    const calls: string[][] = [];
+    spawnSpy = spyOn(Bun, "spawnSync").mockImplementation(((cmd: string[]) => {
+      calls.push([...cmd]);
+      if (cmd[1] === "remote" && cmd[2] === "get-url") {
+        return spawnOk("git@github.com:owner/repo.git");
+      }
+      if (cmd[1] === "symbolic-ref") return spawnOk("refs/remotes/origin/main");
+      return spawnOk();
+    }) as any);
+
+    await createClone(PROJECT, "test-no-token-clone");
+
+    const tokenSetUrl = calls.find(
+      (c) =>
+        c[1] === "remote" &&
+        c[2] === "set-url" &&
+        c[4]?.includes("x-access-token"),
+    );
+    expect(tokenSetUrl).toBeUndefined();
   });
 });

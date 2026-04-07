@@ -8,6 +8,7 @@ process.env.GITHUB_TOKEN = "test-token-github";
 // reliability issues in Bun 1.3.9.
 let prData: Record<string, unknown> = {
   merged: false,
+  draft: false,
   mergeable: true,
   node_id: "PR_12345",
   head: { ref: "feature/test", sha: "abc123" },
@@ -209,6 +210,7 @@ describe("getPRStatus", () => {
     resetClient();
     prData = {
       merged: false,
+      draft: false,
       mergeable: true,
       head: { ref: "feature/test", sha: "abc123" },
     };
@@ -219,6 +221,7 @@ describe("getPRStatus", () => {
   test("merged PR returns merged:true with ciStatus:success", async () => {
     prData = {
       merged: true,
+      draft: false,
       mergeable: null,
       head: { ref: "feature/done", sha: "def456" },
     };
@@ -309,6 +312,7 @@ describe("getPRStatus", () => {
   test("mergeable:null passes through unchanged", async () => {
     prData = {
       merged: false,
+      draft: false,
       mergeable: null,
       head: { ref: "feature/test", sha: "abc123" },
     };
@@ -321,6 +325,7 @@ describe("getPRStatus", () => {
   test("mergeable:false passes through unchanged", async () => {
     prData = {
       merged: false,
+      draft: false,
       mergeable: false,
       head: { ref: "feature/test", sha: "abc123" },
     };
@@ -341,6 +346,7 @@ describe("getPRStatus", () => {
   test("returns branch name from PR head", async () => {
     prData = {
       merged: false,
+      draft: false,
       mergeable: true,
       head: { ref: "feature/my-branch", sha: "xyz" },
     };
@@ -599,6 +605,7 @@ describe("enableAutoMerge", () => {
     resetClient();
     prData = {
       merged: false,
+      draft: false,
       mergeable: true,
       node_id: "PR_12345",
       head: { ref: "feature/test", sha: "abc123" },

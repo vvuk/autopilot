@@ -121,6 +121,7 @@ export function detectRepo(
 
 export interface PRStatus {
   merged: boolean;
+  draft: boolean;
   mergeable: boolean | null;
   branch: string;
   ciStatus: "success" | "failure" | "pending";
@@ -148,6 +149,7 @@ export async function getPRStatus(
   if (pr.merged) {
     return {
       merged: true,
+      draft: false,
       mergeable: null,
       branch: pr.head.ref,
       ciStatus: "success",
@@ -194,6 +196,7 @@ export async function getPRStatus(
 
   return {
     merged: false,
+    draft: pr.draft ?? false,
     mergeable: pr.mergeable,
     branch: pr.head.ref,
     ciStatus,

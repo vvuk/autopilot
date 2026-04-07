@@ -169,6 +169,11 @@ export async function checkOpenPRs(opts: {
       continue;
     }
 
+    // Draft PRs are not ready for fixups or review responses
+    if (status.draft) {
+      continue;
+    }
+
     // When labels or projects are configured, also verify this is an
     // autopilot-managed branch so the monitor never acts on human PRs
     // that happen to carry matching labels.

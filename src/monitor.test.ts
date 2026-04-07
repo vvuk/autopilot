@@ -48,6 +48,7 @@ const mockIssuesQuery = mock(() =>
 // so github.test.ts is unaffected.
 let prData: Record<string, unknown> = {
   merged: false,
+  draft: false,
   mergeable: null,
   head: { ref: "feature/test", sha: "abc123" },
 };
@@ -109,6 +110,7 @@ beforeEach(() => {
   // Reset mutable mock state to a safe baseline
   prData = {
     merged: false,
+    draft: false,
     mergeable: null,
     head: { ref: "autopilot-test", sha: "abc123" },
   };
@@ -434,6 +436,27 @@ describe("checkOpenPRs — fixer spawn conditions", () => {
     checkRunsData = {
       check_runs: [
         { status: "completed", conclusion: "success", name: "checks" },
+      ],
+    };
+
+    const result = await checkOpenPRs(makeOpts(state));
+
+    expect(result).toHaveLength(0);
+  });
+
+  test("does NOT spawn fixer or review responder for draft PRs", async () => {
+    const issue = makeIssue("draft-pr", "https://github.com/o/r/pull/60");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    // CI failure that would normally trigger a fixer — but PR is draft
+    prData = {
+      merged: false,
+      draft: true,
+      mergeable: null,
+      head: { ref: "autopilot-draft", sha: "abc123" },
+    };
+    checkRunsData = {
+      check_runs: [
+        { status: "completed", conclusion: "failure", name: "tests" },
       ],
     };
 

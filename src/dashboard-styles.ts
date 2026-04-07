@@ -58,8 +58,29 @@ export const DASHBOARD_CSS = `
   }
   .main {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .main > div {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .activity-header {
+    flex-shrink: 0;
+    background: var(--bg);
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .activity-log {
+    flex: 1;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 0 20px 16px;
   }
   .section-title {
     font-size: 11px;
@@ -83,6 +104,12 @@ export const DASHBOARD_CSS = `
     background: var(--bg-card);
     border-left: 2px solid var(--accent);
     padding-left: 14px;
+  }
+  a.issue-id {
+    text-decoration: none;
+  }
+  a.issue-id:hover {
+    text-decoration: underline;
   }
   .agent-card .issue-id {
     color: var(--accent);
@@ -349,7 +376,7 @@ export const DASHBOARD_CSS = `
     gap: 4px;
   }
   .cost-trend-date {
-    width: 30px;
+    width: 5ch;
   }
   .cost-trend-bar-track {
     width: 60px;
@@ -472,7 +499,7 @@ export const DASHBOARD_CSS = `
     font-size: 12px;
   }
   .cost-date {
-    width: 40px;
+    width: 5ch;
     color: var(--text-dim);
   }
   .cost-bar-bg {

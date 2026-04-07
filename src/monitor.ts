@@ -121,7 +121,9 @@ export async function checkOpenPRs(opts: {
           return null;
         }
         const prNumber = Number.parseInt(prMatch[1], 10);
-	info(`Issue ${issue.id}: PR ${prNumber}`);
+        info(
+          `Issue ${issue.identifier} (${issue.id.slice(0, 8)}...): PR ${prNumber}`,
+        );
         return { issue, prNumber };
       }),
     )

@@ -177,6 +177,9 @@ function makeStandardClient(): LinearClient {
     get viewer() {
       return Promise.resolve({ name: "Test User", email: "test@example.com" });
     },
+    get organization() {
+      return Promise.resolve({ urlKey: "test-org" });
+    },
   } as unknown as LinearClient;
 }
 

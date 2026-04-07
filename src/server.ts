@@ -51,6 +51,8 @@ export interface DashboardOptions {
   triggerPlanning?: () => void;
   retryIssue?: (linearIssueId: string) => Promise<void>;
   config?: AutopilotConfig;
+  /** URL prefix for linking to Linear issues, e.g. "https://linear.app/my-org/issue" */
+  linearUrlPrefix?: string;
   triageIssues?: () => Promise<
     Array<{ id: string; identifier: string; title: string; priority: number }>
   >;
@@ -257,6 +259,16 @@ export function createApp(
   webhooks?: WebhookOptions,
 ): Hono {
   const app = new Hono();
+  const linearUrlPrefix = options?.linearUrlPrefix;
+
+  /** Render an issue identifier as a linked <span> (or plain text if no URL prefix). */
+  function linkedIssueId(identifier: string): string {
+    const escaped = escapeHtml(identifier);
+    if (linearUrlPrefix) {
+      return `<a class="issue-id" href="${escapeHtml(linearUrlPrefix)}/${escaped}" target="_blank" rel="noopener">${escaped}</a>`;
+    }
+    return `<span class="issue-id">${escaped}</span>`;
+  }
 
   app.onError((e, c) => {
     const msg = e instanceof Error ? e.message : String(e);
@@ -802,7 +814,7 @@ export function createApp(
             const elapsedStr =
               elapsed > 60 ? `${Math.floor(elapsed / 60)}m` : `${elapsed}s`;
             return `<div class="agent-card" hx-get="/partials/activity/${escapeHtml(a.id)}" hx-target="#main-panel" hx-swap="innerHTML">
-            <div style="display:flex;align-items:center;justify-content:space-between"><span><span class="status-dot running"></span><span class="issue-id">${escapeHtml(a.issueId)}</span></span><button class="action-btn danger" hx-post="/api/cancel/${escapeHtml(a.id)}" hx-confirm="Cancel this agent?" onclick="event.stopPropagation()">Cancel</button></div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><span><span class="status-dot running"></span>${linkedIssueId(a.issueId)}</span><button class="action-btn danger" hx-post="/api/cancel/${escapeHtml(a.id)}" hx-confirm="Cancel this agent?" onclick="event.stopPropagation()">Cancel</button></div>
             <div class="title">${escapeHtml(a.issueTitle)}</div>
             <div class="meta">${elapsedStr} &middot; ${a.activities.length} activities</div>
           </div>`;
@@ -829,22 +841,22 @@ export function createApp(
         if (savedLogs.length > 0) {
           return c.html(html`
             <div>
-              <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border)">
+              <div class="activity-header">
                 <div>
                   <span class="status-dot ${hist.status}"></span>
-                  <strong>${hist.issueId}</strong> — ${hist.issueTitle}
+                  <strong>${raw(linkedIssueId(hist.issueId))}</strong> — ${hist.issueTitle}
                 </div>
                 <div class="meta">${durationStr} &middot; ${String(savedLogs.length)} activities${costStr ? ` &middot; ${costStr}` : ""}</div>
               </div>
-              ${raw(savedLogs.map((act) => renderActivityItem(act)).join(""))}
+              <div class="activity-log">${raw(savedLogs.map((act) => renderActivityItem(act)).join(""))}</div>
             </div>
           `);
         }
         return c.html(html`
-          <div style="padding: 8px 0">
+          <div style="padding: 16px 20px">
             <div>
               <span class="status-dot ${hist.status}"></span>
-              <strong>${hist.issueId}</strong> — ${hist.issueTitle}
+              <strong>${raw(linkedIssueId(hist.issueId))}</strong> — ${hist.issueTitle}
             </div>
             <div class="meta" style="margin-top: 6px">
               Status: ${hist.status} &middot; Duration: ${durationStr}
@@ -872,16 +884,18 @@ export function createApp(
         hx-trigger="every 3s"
         hx-swap="outerHTML"
       >
-        <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border)">
+        <div class="activity-header">
           <div>
             <span class="status-dot ${agent.status}"></span>
-            <strong>${agent.issueId}</strong> — ${agent.issueTitle}
+            <strong>${raw(linkedIssueId(agent.issueId))}</strong> — ${agent.issueTitle}
           </div>
           <div class="meta">${elapsedStr} &middot; ${String(agent.activities.length)} activities</div>
           ${!verbose ? html`<a href="#" hx-get="/partials/activity/${id}?verbose=true" hx-target="#main-panel" hx-swap="innerHTML" style="color: var(--accent); font-size: 11px; margin-left: auto">verbose</a>` : html`<a href="#" hx-get="/partials/activity/${id}" hx-target="#main-panel" hx-swap="innerHTML" style="color: var(--accent); font-size: 11px; margin-left: auto">compact</a>`}
         </div>
-        ${raw(activities.map((act) => renderActivityItem(act, verbose)).join(""))}
-        ${agent.status === "running" ? html`<div class="activity-status"><span class="dot"></span> ${randomSaying()}</div>` : ""}
+        <div class="activity-log">
+          ${raw(activities.map((act) => renderActivityItem(act, verbose)).join(""))}
+          ${agent.status === "running" ? html`<div class="activity-status"><span class="dot"></span> ${randomSaying()}</div>` : ""}
+        </div>
       </div>
     `);
   });
@@ -911,7 +925,7 @@ export function createApp(
               ? `<button class="action-btn" hx-post="/api/retry/${escapeHtml(h.id)}" onclick="event.stopPropagation()">Retry</button>`
               : "";
             return `<div class="history-card" hx-get="/partials/activity/${escapeHtml(h.id)}" hx-target="#main-panel" hx-swap="innerHTML" style="cursor:pointer">
-            <div style="display:flex;align-items:center;justify-content:space-between"><span><span class="status-dot ${h.status}"></span><span class="issue-id">${escapeHtml(h.issueId)}</span> ${durationStr} ${costStr}</span>${retryBtn}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><span><span class="status-dot ${h.status}"></span>${linkedIssueId(h.issueId)} ${durationStr} ${costStr}</span>${retryBtn}</div>
             <div class="title">${escapeHtml(h.issueTitle)}</div>
           </div>`;
           })
@@ -993,7 +1007,7 @@ export function createApp(
         ? `<ul class="planning-issues-list">${session.issuesFiled
             .map(
               (i) =>
-                `<li><span class="issue-id">${escapeHtml(i.identifier)}</span> ${escapeHtml(i.title)}</li>`,
+                `<li>${linkedIssueId(i.identifier)} ${escapeHtml(i.title)}</li>`,
             )
             .join("")}</ul>`
         : `<div style="color:var(--text-dim);font-size:11px">None</div>`;
@@ -1181,7 +1195,7 @@ export function createApp(
           .map((issue) => {
             const priorityName = priorityNames[issue.priority] ?? "Low";
             return `<div class="triage-card">
-              <div style="display:flex;align-items:center;justify-content:space-between"><span class="issue-id">${escapeHtml(issue.identifier)}</span><span style="font-size:11px;color:var(--text-dim)">${escapeHtml(priorityName)}</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between">${linkedIssueId(issue.identifier)}<span style="font-size:11px;color:var(--text-dim)">${escapeHtml(priorityName)}</span></div>
               <div class="title">${escapeHtml(issue.title)}</div>
               <div class="triage-actions">
                 <button class="action-btn approve" hx-post="/api/triage/${escapeHtml(issue.id)}/approve" onclick="event.stopPropagation()">Approve</button>
@@ -1336,7 +1350,7 @@ export function createApp(
                 perIssueCosts
                   .map((i) => {
                     return `<div class="cost-issue-row">
-                  <span class="issue-id">${escapeHtml(i.issueId)}</span>
+                  ${linkedIssueId(i.issueId)}
                   <span class="cost-amount">$${i.totalCostUsd.toFixed(2)}</span>
                   <span class="cost-runs">${i.runCount}r</span>
                 </div>`;

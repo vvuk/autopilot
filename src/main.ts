@@ -200,6 +200,9 @@ const app = createApp(
     secureCookie: !isLocalhost,
     config,
     db: authDb,
+    linearUrlPrefix: linearIds.organizationUrlKey
+      ? `https://linear.app/${linearIds.organizationUrlKey}/issue`
+      : undefined,
     triggerPlanning: () => {
       runPlanning({
         config,

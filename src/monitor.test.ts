@@ -68,6 +68,13 @@ const mockListReviewComments = mock(() =>
 const mockListIssueComments = mock(() =>
   Promise.resolve({ data: issueCommentsData }),
 );
+let reactionsData: Record<string, unknown>[] = [];
+const mockListReactionsForComment = mock(() =>
+  Promise.resolve({ data: reactionsData }),
+);
+const mockCreateReactionForComment = mock(() =>
+  Promise.resolve({ data: { id: 99, content: "+1" } }),
+);
 
 import { resetClient } from "./lib/github";
 import { resetClient as resetLinearClient } from "./lib/linear";
@@ -103,6 +110,10 @@ beforeEach(() => {
         },
         issues: { listComments: mockListIssueComments },
         checks: { listForRef: mockChecksListForRef },
+        reactions: {
+          listForIssueComment: mockListReactionsForComment,
+          createForIssueComment: mockCreateReactionForComment,
+        },
       };
     },
   }));
@@ -118,7 +129,14 @@ beforeEach(() => {
   reviewsData = [];
   reviewCommentsData = [];
   issueCommentsData = [];
+  reactionsData = [];
   mockPullsGet.mockImplementation(() => Promise.resolve({ data: prData }));
+  mockListReactionsForComment.mockImplementation(() =>
+    Promise.resolve({ data: reactionsData }),
+  );
+  mockCreateReactionForComment.mockImplementation(() =>
+    Promise.resolve({ data: { id: 99, content: "+1" } }),
+  );
   mockListReviews.mockImplementation(() =>
     Promise.resolve({ data: reviewsData }),
   );
@@ -1185,6 +1203,151 @@ describe("checkOpenPRs — fixer timeout and attempt budget", () => {
     const result4 = await checkOpenPRs(makeOpts(state, config));
     expect(result4).toHaveLength(1);
     await Promise.all(result4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "autopilot: keep going" override tests
+// ---------------------------------------------------------------------------
+
+describe('checkOpenPRs — "autopilot: keep going" override', () => {
+  let state: AppState;
+
+  beforeEach(() => {
+    state = new AppState();
+    mockRunClaude.mockResolvedValue({
+      timedOut: false,
+      inactivityTimedOut: false,
+      error: undefined,
+      costUsd: 0.05,
+      durationMs: 500,
+      numTurns: 2,
+      result: "",
+    });
+    // Default: CI failure so fixers would be spawned
+    prData = {
+      merged: false,
+      mergeable: null,
+      head: { ref: "autopilot-keepgoing", sha: "abc123" },
+    };
+    checkRunsData = {
+      check_runs: [
+        { status: "completed", conclusion: "failure", name: "tests" },
+      ],
+    };
+  });
+
+  test("resets fixer attempts when 'autopilot: keep going' comment found without +1", async () => {
+    const config = makeConfig(3, false, { max_fixer_attempts: 1 });
+    const issue = makeIssue("kg-reset", "https://github.com/o/r/pull/800");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+
+    // First attempt — fixer spawned, counter reaches max
+    const result1 = await checkOpenPRs(makeOpts(state, config));
+    expect(result1).toHaveLength(1);
+    await Promise.all(result1);
+
+    // Max reached — but "keep going" comment is present with no reactions
+    issueCommentsData = [
+      { id: 5001, body: "autopilot: keep going", user: { login: "vlad" } },
+    ];
+    reactionsData = []; // no +1 reaction
+
+    const result2 = await checkOpenPRs(makeOpts(state, config));
+    // Should have reset attempts and spawned a fixer
+    expect(result2).toHaveLength(1);
+    await Promise.all(result2);
+
+    // Verify the +1 reaction was created
+    expect(mockCreateReactionForComment).toHaveBeenCalled();
+  });
+
+  test("does NOT reset when 'autopilot: keep going' comment already has +1", async () => {
+    const config = makeConfig(3, false, { max_fixer_attempts: 1 });
+    const issue = makeIssue("kg-acked", "https://github.com/o/r/pull/801");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+
+    // First attempt — counter reaches max
+    const result1 = await checkOpenPRs(makeOpts(state, config));
+    expect(result1).toHaveLength(1);
+    await Promise.all(result1);
+
+    // "keep going" comment exists but already has +1
+    issueCommentsData = [
+      { id: 5002, body: "autopilot: keep going", user: { login: "vlad" } },
+    ];
+    reactionsData = [{ id: 10, content: "+1" }];
+
+    const result2 = await checkOpenPRs(makeOpts(state, config));
+    // Should still be skipped — the +1 means we already honored it
+    expect(result2).toHaveLength(0);
+  });
+
+  test("ignores comments that are not exactly 'autopilot: keep going'", async () => {
+    const config = makeConfig(3, false, { max_fixer_attempts: 1 });
+    const issue = makeIssue("kg-mismatch", "https://github.com/o/r/pull/802");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+
+    // First attempt — counter reaches max
+    const result1 = await checkOpenPRs(makeOpts(state, config));
+    expect(result1).toHaveLength(1);
+    await Promise.all(result1);
+
+    // Comment that looks similar but isn't an exact match
+    issueCommentsData = [
+      {
+        id: 5003,
+        body: "autopilot: keep going please",
+        user: { login: "vlad" },
+      },
+    ];
+
+    const result2 = await checkOpenPRs(makeOpts(state, config));
+    expect(result2).toHaveLength(0);
+  });
+
+  test("handles case-insensitive 'Autopilot: Keep Going'", async () => {
+    const config = makeConfig(3, false, { max_fixer_attempts: 1 });
+    const issue = makeIssue("kg-case", "https://github.com/o/r/pull/803");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+
+    // First attempt — counter reaches max
+    const result1 = await checkOpenPRs(makeOpts(state, config));
+    expect(result1).toHaveLength(1);
+    await Promise.all(result1);
+
+    issueCommentsData = [
+      {
+        id: 5004,
+        body: "  Autopilot: Keep Going  ",
+        user: { login: "vlad" },
+      },
+    ];
+    reactionsData = [];
+
+    const result2 = await checkOpenPRs(makeOpts(state, config));
+    expect(result2).toHaveLength(1);
+    await Promise.all(result2);
+  });
+
+  test("gracefully continues when checkKeepGoingSignal throws", async () => {
+    const config = makeConfig(3, false, { max_fixer_attempts: 1 });
+    const issue = makeIssue("kg-error", "https://github.com/o/r/pull/804");
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+
+    // First attempt — counter reaches max
+    const result1 = await checkOpenPRs(makeOpts(state, config));
+    expect(result1).toHaveLength(1);
+    await Promise.all(result1);
+
+    // Make listComments throw — checkKeepGoingSignal will fail
+    mockListIssueComments.mockRejectedValueOnce(
+      new Error("GitHub API unavailable"),
+    );
+
+    const result2 = await checkOpenPRs(makeOpts(state, config));
+    // Should fall through to the "skipping" path, not crash
+    expect(result2).toHaveLength(0);
   });
 });
 

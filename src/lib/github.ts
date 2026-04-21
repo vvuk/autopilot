@@ -205,6 +205,67 @@ export async function getPRStatus(
 }
 
 /**
+ * Check if a PR has an unacknowledged "autopilot: keep going" comment.
+ * Looks for issue comments whose body is exactly "autopilot: keep going"
+ * (trimmed, case-insensitive) that do NOT already have a +1 reaction.
+ * If found, adds a +1 reaction and returns true (meaning "reset fixer attempts").
+ */
+export async function checkKeepGoingSignal(
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<boolean> {
+  const octokit = getGitHubClient();
+
+  const { data: comments } = await withRetry(
+    () =>
+      octokit.rest.issues.listComments({
+        owner,
+        repo,
+        issue_number: prNumber,
+      }),
+    `listComments #${prNumber}`,
+  );
+
+  for (const comment of comments) {
+    if (comment.body?.trim().toLowerCase() !== "autopilot: keep going") {
+      continue;
+    }
+
+    // Check if we already acknowledged this comment with a +1
+    const { data: reactions } = await withRetry(
+      () =>
+        octokit.rest.reactions.listForIssueComment({
+          owner,
+          repo,
+          comment_id: comment.id,
+        }),
+      `listReactions comment ${comment.id}`,
+    );
+
+    const hasThumbsUp = reactions.some((r) => r.content === "+1");
+    if (hasThumbsUp) {
+      continue;
+    }
+
+    // Acknowledge and signal reset
+    await withRetry(
+      () =>
+        octokit.rest.reactions.createForIssueComment({
+          owner,
+          repo,
+          comment_id: comment.id,
+          content: "+1",
+        }),
+      `reactToComment ${comment.id}`,
+    );
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Search GitHub for a user by email address.
  * Returns the GitHub login (username) if found, null otherwise.
  */

@@ -3,7 +3,11 @@ import type { SdkPluginConfig } from "@anthropic-ai/claude-agent-sdk";
 import { handleAgentResult } from "./lib/agent-result";
 import { buildMcpServers, runClaude } from "./lib/claude";
 import type { AutopilotConfig, LinearIds } from "./lib/config";
-import { getPRReviewInfo, getPRStatus } from "./lib/github";
+import {
+  checkKeepGoingSignal,
+  getPRReviewInfo,
+  getPRStatus,
+} from "./lib/github";
 import { getLinearClient } from "./lib/linear";
 import { info, warn } from "./lib/logger";
 import { AUTOPILOT_ROOT, buildPrompt } from "./lib/prompt";
@@ -153,13 +157,30 @@ export async function checkOpenPRs(opts: {
       break;
     }
 
-    // Check fixer attempt budget
+    // Check for "autopilot: keep going" override before enforcing attempt limit
     const attempts = fixerAttempts.get(prNumber) ?? 0;
     if (attempts >= config.executor.max_fixer_attempts) {
-      warn(
-        `PR #${prNumber} (${issue.identifier}) has reached max fixer attempts (${config.executor.max_fixer_attempts}) — skipping`,
-      );
-      continue;
+      try {
+        const keepGoing = await checkKeepGoingSignal(owner, repo, prNumber);
+        if (keepGoing) {
+          info(
+            `PR #${prNumber} (${issue.identifier}): "autopilot: keep going" — resetting fixer attempts`,
+          );
+          fixerAttempts.delete(prNumber);
+        } else {
+          warn(
+            `PR #${prNumber} (${issue.identifier}) has reached max fixer attempts (${config.executor.max_fixer_attempts}) — skipping`,
+          );
+          continue;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        warn(`Failed to check keep-going signal for PR #${prNumber}: ${msg}`);
+        warn(
+          `PR #${prNumber} (${issue.identifier}) has reached max fixer attempts (${config.executor.max_fixer_attempts}) — skipping`,
+        );
+        continue;
+      }
     }
 
     let status: Awaited<ReturnType<typeof getPRStatus>>;

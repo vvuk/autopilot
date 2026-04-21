@@ -24,7 +24,12 @@ const activeIssueIds = new Set<string>();
  */
 export async function executeIssue(opts: {
   agentId?: string;
-  issue: { id: string; identifier: string; title: string };
+  issue: {
+    id: string;
+    identifier: string;
+    title: string;
+    creatorEmail?: string | null;
+  };
   config: AutopilotConfig;
   projectPath: string;
   linearIds: LinearIds;
@@ -67,6 +72,9 @@ export async function executeIssue(opts: {
         AUTOMERGE_INSTRUCTION: config.github.automerge
           ? "Enable auto-merge on the PR using the `enable_auto_merge` tool from the `autopilot` MCP server. If enabling auto-merge fails (e.g., the repository does not have auto-merge enabled, or branch protection rules are not configured), note the failure in your Linear comment but do NOT treat it as a blocking error."
           : "Skip — auto-merge is not enabled for this project.",
+        REVIEW_INSTRUCTION: issue.creatorEmail
+          ? `Request a review from the issue creator using the \`request_review_by_email\` tool from the \`autopilot\` MCP server with email \`${issue.creatorEmail}\`. If no matching GitHub user is found or the request fails, note it in your Linear comment but do NOT treat it as a blocking error.`
+          : "Skip — no creator email available for review request.",
       },
       projectPath,
     );
@@ -357,6 +365,7 @@ export async function fillSlots(opts: {
         id: issue.id,
         identifier: issue.identifier,
         title: issue.title,
+        creatorEmail: issue.creatorEmail,
       },
       config,
       projectPath,

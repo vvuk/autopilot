@@ -203,6 +203,9 @@ const GET_READY_ISSUES_QUERY = `
         identifier
         title
         priority
+        creator {
+          email
+        }
         inverseRelations {
           nodes {
             type
@@ -229,6 +232,7 @@ interface ReadyIssueNode {
   identifier: string;
   title: string;
   priority?: number | null;
+  creator?: { email?: string | null } | null;
   inverseRelations: {
     nodes: Array<{
       type: string;
@@ -249,6 +253,15 @@ interface GetReadyIssuesResponse {
   };
 }
 
+/** Issue returned by getReadyIssues — includes creator email for reviewer assignment. */
+export interface ReadyIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  priority?: number | null;
+  creatorEmail?: string | null;
+}
+
 /**
  * Get ready, unblocked leaf issues across the team, sorted by priority.
  * Queries by team (not project) so issues in dynamically-created projects
@@ -264,7 +277,7 @@ export async function getReadyIssues(
   linearIds: LinearIds,
   limit: number = 10,
   filters?: { labels?: string[]; projects?: string[] },
-): Promise<Issue[]> {
+): Promise<ReadyIssue[]> {
   const client = await getLinearClientAsync();
   const filter = {
     team: { id: { eq: linearIds.teamId } },
@@ -313,7 +326,13 @@ export async function getReadyIssues(
     }
   }
 
-  return leafUnblocked as unknown as Issue[];
+  return leafUnblocked.map((node) => ({
+    id: node.id,
+    identifier: node.identifier,
+    title: node.title,
+    priority: node.priority,
+    creatorEmail: node.creator?.email ?? null,
+  }));
 }
 
 // Minimal GraphQL query to count issues — fetches only { id } per node to

@@ -12,7 +12,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { SandboxConfig } from "./config";
-import { enableAutoMerge } from "./github";
+import { enableAutoMerge, requestReviewByEmail } from "./github";
 import { getCachedAppToken } from "./github-app-auth";
 import { createProjectStatusUpdate } from "./linear";
 import { warn } from "./logger";
@@ -43,6 +43,28 @@ export function buildMcpServers(linearToken?: string): Record<string, unknown> {
         args.owner,
         args.repo,
         args.pull_number,
+      );
+      return { content: [{ type: "text" as const, text: msg }] };
+    },
+  );
+
+  const requestReviewTool = tool(
+    "request_review_by_email",
+    "Request a PR review from a GitHub user identified by their email address. Searches GitHub for a user matching the email, then requests a review on the specified PR if found. Silently skips if no matching user is found.",
+    {
+      owner: z.string().describe("Repository owner (e.g. 'octocat')"),
+      repo: z.string().describe("Repository name (e.g. 'hello-world')"),
+      pull_number: z.number().describe("Pull request number"),
+      email: z
+        .string()
+        .describe("Email address of the person to request review from"),
+    },
+    async (args) => {
+      const msg = await requestReviewByEmail(
+        args.owner,
+        args.repo,
+        args.pull_number,
+        args.email,
       );
       return { content: [{ type: "text" as const, text: msg }] };
     },
@@ -92,7 +114,7 @@ export function buildMcpServers(linearToken?: string): Record<string, unknown> {
     },
     autopilot: createSdkMcpServer({
       name: "autopilot",
-      tools: [autoMergeTool, projectStatusUpdateTool],
+      tools: [autoMergeTool, requestReviewTool, projectStatusUpdateTool],
     }),
   };
 }

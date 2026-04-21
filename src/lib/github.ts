@@ -204,6 +204,63 @@ export async function getPRStatus(
   };
 }
 
+/**
+ * Search GitHub for a user by email address.
+ * Returns the GitHub login (username) if found, null otherwise.
+ */
+export async function findGitHubUserByEmail(
+  email: string,
+): Promise<string | null> {
+  const octokit = getGitHubClient();
+  try {
+    const { data } = await withRetry(
+      () => octokit.rest.search.users({ q: `${email} in:email` }),
+      `searchUserByEmail ${email}`,
+    );
+    if (data.total_count > 0 && data.items[0]) {
+      return data.items[0].login;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Request a review on a PR from a GitHub user identified by email.
+ * Searches for the GitHub user, then requests review if found.
+ * Returns a human-readable result message.
+ */
+export async function requestReviewByEmail(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  email: string,
+): Promise<string> {
+  const login = await findGitHubUserByEmail(email);
+  if (!login) {
+    return `No GitHub user found for email ${email} — skipping review request.`;
+  }
+
+  const octokit = getGitHubClient();
+  try {
+    await withRetry(
+      () =>
+        octokit.rest.pulls.requestReviewers({
+          owner,
+          repo,
+          pull_number: prNumber,
+          reviewers: [login],
+        }),
+      `requestReviewers #${prNumber}`,
+    );
+    return `Requested review from @${login} (${email}) on PR #${prNumber}.`;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `Found GitHub user @${login} for ${email}, but failed to request review: ${msg}`;
+  }
+}
+
 export interface PRReviewInfo {
   hasChangesRequested: boolean;
   /** ID of the latest CHANGES_REQUESTED review, used for dedup. Null if none. */

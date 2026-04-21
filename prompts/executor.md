@@ -110,8 +110,8 @@ Create a clean commit and PR.
      - **Changes**: Bullet list of specific changes
      - **Testing**: What tests were added/modified
      - **Issue**: Link to the Linear issue
-   - Request no reviewers (human will review from Linear)
-7. **Auto-merge**: {{AUTOMERGE_INSTRUCTION}}
+7. **Request review**: {{REVIEW_INSTRUCTION}}
+8. **Auto-merge**: {{AUTOMERGE_INSTRUCTION}}
 
 ---
 

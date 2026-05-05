@@ -326,6 +326,8 @@ export interface PRReviewInfo {
   hasChangesRequested: boolean;
   /** ID of the latest CHANGES_REQUESTED review, used for dedup. Null if none. */
   latestChangesRequestedReviewId: string | null;
+  /** ID of the latest inline review comment, used for dedup. Null if none. */
+  latestReviewCommentId: string | null;
   /** ID of the latest PR-level (issue) comment, used for dedup. Null if none. */
   latestIssueCommentId: string | null;
   /** Formatted inline review comments for use in prompts. */
@@ -412,8 +414,11 @@ export async function getPRReviewInfo(
     latestChangesRequestedReviewId = String(latest.id);
   }
 
-  // Format review summaries (body text from CHANGES_REQUESTED reviews)
-  const reviewSummaries = changesRequestedReviews
+  // Format review summaries (body text from CHANGES_REQUESTED and COMMENTED reviews)
+  const feedbackReviews = [...latestByUser.values()].filter(
+    (r) => r.state === "CHANGES_REQUESTED" || r.state === "COMMENTED",
+  );
+  const reviewSummaries = feedbackReviews
     .filter((r) => r.body)
     .map((r) => `Reviewer ${r.user?.login ?? "unknown"}: ${r.body}`)
     .join("\n\n");
@@ -425,6 +430,13 @@ export async function getPRReviewInfo(
         `File: ${c.path} (line ${c.line ?? c.original_line ?? "?"})\nReviewer: ${c.user?.login ?? "unknown"}\nComment: ${c.body}`,
     )
     .join("\n\n");
+
+  // Track latest inline review comment ID for dedup
+  let latestReviewCommentId: string | null = null;
+  if (comments.length > 0) {
+    const latest = comments.reduce((a, b) => (a.id > b.id ? a : b));
+    latestReviewCommentId = String(latest.id);
+  }
 
   // Find the latest PR-level (issue) comment by ID (IDs are monotonically increasing)
   let latestIssueCommentId: string | null = null;
@@ -440,6 +452,7 @@ export async function getPRReviewInfo(
   return {
     hasChangesRequested,
     latestChangesRequestedReviewId,
+    latestReviewCommentId,
     latestIssueCommentId,
     reviewComments,
     reviewSummaries,

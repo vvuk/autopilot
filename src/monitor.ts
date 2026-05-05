@@ -268,10 +268,11 @@ export async function checkOpenPRs(opts: {
       const hasFeedback =
         (reviewInfo.hasChangesRequested &&
           reviewInfo.latestChangesRequestedReviewId !== null) ||
+        reviewInfo.latestReviewCommentId !== null ||
         reviewInfo.latestIssueCommentId !== null;
 
       if (hasFeedback) {
-        const dedupKey = `${issue.id}:r${reviewInfo.latestChangesRequestedReviewId ?? "none"}:c${reviewInfo.latestIssueCommentId ?? "none"}`;
+        const dedupKey = `${issue.id}:r${reviewInfo.latestChangesRequestedReviewId ?? "none"}:rc${reviewInfo.latestReviewCommentId ?? "none"}:c${reviewInfo.latestIssueCommentId ?? "none"}`;
         if (!handledReviewIds.has(dedupKey)) {
           handledReviewIds.add(dedupKey);
           const promise = respondToReview({

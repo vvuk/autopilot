@@ -1017,6 +1017,69 @@ describe("checkOpenPRs — review responder", () => {
     await Promise.all(secondResult);
   });
 
+  test("spawns review responder when CI passing and inline review comments exist (COMMENTED review)", async () => {
+    const issue = makeIssue(
+      "rr-inline",
+      "https://github.com/o/r/pull/211",
+    );
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    // Review submitted as "COMMENTED" (not "CHANGES_REQUESTED")
+    reviewsData = [
+      {
+        id: 4001,
+        user: { login: "alice" },
+        state: "COMMENTED",
+        body: "",
+        submitted_at: "2026-01-01T10:00:00Z",
+      },
+    ];
+    // Inline line comments left as part of the review
+    reviewCommentsData = [
+      {
+        id: 4002,
+        user: { login: "alice" },
+        body: "Use const here",
+        path: "src/foo.ts",
+        line: 42,
+        original_line: 42,
+      },
+    ];
+
+    const config = makeConfig(3, true);
+    const result = await checkOpenPRs(makeOpts(state, config));
+
+    expect(result).toHaveLength(1);
+    await Promise.all(result);
+  });
+
+  test("dedup: same inline review comments do not trigger multiple responders", async () => {
+    const issue = makeIssue(
+      "rr-inline-dedup",
+      "https://github.com/o/r/pull/212",
+    );
+    mockIssuesQuery.mockResolvedValue({ nodes: [issue] });
+    reviewCommentsData = [
+      {
+        id: 4003,
+        user: { login: "alice" },
+        body: "Fix this",
+        path: "src/bar.ts",
+        line: 10,
+        original_line: 10,
+      },
+    ];
+
+    const config = makeConfig(3, true);
+
+    const firstResult = await checkOpenPRs(makeOpts(state, config));
+    expect(firstResult).toHaveLength(1);
+    await Promise.all(firstResult);
+
+    // Same inline comments → same dedup key → no new responder
+    const secondResult = await checkOpenPRs(makeOpts(state, config));
+    expect(secondResult).toHaveLength(0);
+  });
+
   test("does NOT spawn review responder when no reviews and no PR comments", async () => {
     const issue = makeIssue("rr-empty", "https://github.com/o/r/pull/210");
     mockIssuesQuery.mockResolvedValue({ nodes: [issue] });

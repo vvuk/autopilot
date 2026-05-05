@@ -377,6 +377,7 @@ describe("getPRReviewInfo", () => {
 
     expect(info.hasChangesRequested).toBe(false);
     expect(info.latestChangesRequestedReviewId).toBeNull();
+    expect(info.latestReviewCommentId).toBeNull();
     expect(info.reviewComments).toBe("");
     expect(info.reviewSummaries).toBe("");
   });
@@ -499,6 +500,39 @@ describe("getPRReviewInfo", () => {
     expect(info.reviewSummaries).toContain("The naming is wrong");
   });
 
+  test("reviewSummaries includes body text from COMMENTED reviews", async () => {
+    reviewsData = [
+      {
+        id: 401,
+        user: { login: "bob" },
+        state: "COMMENTED",
+        body: "A few suggestions",
+        submitted_at: "2026-01-01T10:00:00Z",
+      },
+    ];
+
+    const info = await getPRReviewInfo("owner", "repo", 60);
+
+    expect(info.reviewSummaries).toContain("bob");
+    expect(info.reviewSummaries).toContain("A few suggestions");
+  });
+
+  test("reviewSummaries excludes body text from APPROVED reviews", async () => {
+    reviewsData = [
+      {
+        id: 402,
+        user: { login: "charlie" },
+        state: "APPROVED",
+        body: "Looks good!",
+        submitted_at: "2026-01-01T10:00:00Z",
+      },
+    ];
+
+    const info = await getPRReviewInfo("owner", "repo", 61);
+
+    expect(info.reviewSummaries).toBe("");
+  });
+
   test("reviewComments contains inline comment text", async () => {
     reviewsData = [];
     reviewCommentsData = [
@@ -518,6 +552,47 @@ describe("getPRReviewInfo", () => {
     expect(info.reviewComments).toContain("42");
     expect(info.reviewComments).toContain("Use const here");
     expect(info.reviewComments).toContain("bob");
+  });
+
+  test("latestReviewCommentId is the highest inline comment ID", async () => {
+    reviewCommentsData = [
+      {
+        id: 501,
+        user: { login: "bob" },
+        body: "First",
+        path: "src/a.ts",
+        line: 1,
+        original_line: 1,
+      },
+      {
+        id: 503,
+        user: { login: "bob" },
+        body: "Third",
+        path: "src/c.ts",
+        line: 3,
+        original_line: 3,
+      },
+      {
+        id: 502,
+        user: { login: "bob" },
+        body: "Second",
+        path: "src/b.ts",
+        line: 2,
+        original_line: 2,
+      },
+    ];
+
+    const info = await getPRReviewInfo("owner", "repo", 70);
+
+    expect(info.latestReviewCommentId).toBe("503");
+  });
+
+  test("latestReviewCommentId is null when no inline comments", async () => {
+    reviewCommentsData = [];
+
+    const info = await getPRReviewInfo("owner", "repo", 71);
+
+    expect(info.latestReviewCommentId).toBeNull();
   });
 
   test("handles null submitted_at without throwing", async () => {
